@@ -1,0 +1,9 @@
+/.venv/
+/metadata/old/
+/metadata/part/
+/__pycache__/
+/tools/
+/lib/
+/data/
+/metadata/
+index.html

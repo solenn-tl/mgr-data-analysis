@@ -1,0 +1,12 @@
+2026-06-09 17:46:30 - INFO - --- STARTING GRAPH METRICS EXPORT ---
+2026-06-09 17:46:30 - INFO - Total nodes: 2204
+2026-06-09 17:46:30 - INFO - Total edges: 1587
+2026-06-09 17:46:30 - INFO - Total number of connected components: 617
+2026-06-09 17:46:30 - INFO - Size of largest connected component: 33
+2026-06-09 17:46:30 - INFO - Number of nodes with no parents: 617
+2026-06-09 17:46:30 - INFO - Number of nodes with no children: 1941
+2026-06-09 17:46:30 - INFO - Number of nodes with no parents and no children: 354
+2026-06-09 17:46:30 - INFO - Average degree: 1.44
+2026-06-09 17:46:30 - INFO - Average in-degree: 0.72
+2026-06-09 17:46:30 - INFO - Average out-degree: 0.72
+2026-06-09 17:46:30 - INFO - --- END OF GRAPH METRICS EXPORT ---

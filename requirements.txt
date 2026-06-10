@@ -1,0 +1,7 @@
+plotly
+numpy
+pandas
+networkx
+matplotlib
+pyvis
+netx-vis
