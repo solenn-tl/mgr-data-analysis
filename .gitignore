@@ -6,5 +6,8 @@
 /lib/
 /data/
 /metadata/
-index.html
-notes.md
+/exp/
+v.md
+seminaire.md
+/dataset/passages_annotations.json
+/dataset/passages.csv

@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcribed conference analysis platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen antialiased">
+
+<div id="app" class="flex flex-col min-h-screen" v-cloak>
+    <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center shadow-md shrink-0">
+        <div class="flex items-center space-x-3 cursor-pointer" @click="goToExplorer">
+            <div class="p-2 bg-indigo-600 rounded-lg text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" /></svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight">Transcribed conference - Analysis platform</h1>
+                <p class="text-xs text-slate-400">Automated stream alignment (text/audio)</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <div v-if="isAutoLoading" class="flex items-center space-x-2 text-sm bg-slate-700/50 px-3 py-1.5 rounded-md border border-slate-600">
+                <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
+                <span class="text-indigo-300 font-medium text-xs">{{ autoLoadStatus }}</span>
+            </div>
+            <div v-else-if="!dataLoaded" class="flex items-center space-x-2 text-sm bg-rose-950/40 px-3 py-1.5 rounded-md border border-rose-500/30">
+                <span class="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span class="text-rose-400 font-medium text-xs">Pipeline offline</span>
+            </div>
+            <div v-else class="flex items-center space-x-2 text-sm bg-emerald-950/40 px-3 py-1.5 rounded-md border border-emerald-500/30">
+                <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                <span class="text-emerald-300 font-medium text-xs">Corpus : {{ rootConferences.length }} top-level conferences detected</span>
+            </div>
+        </div>
+    </header>
+
+    <main v-if="!dataLoaded" class="flex-1 flex flex-col items-center justify-center p-8 bg-gradient-to-b from-slate-900 to-slate-950">
+        <div class="max-w-xl w-full bg-slate-800 border border-slate-700 rounded-2xl p-8 shadow-2xl space-y-6 text-center">
+            
+            <div v-if="isAutoLoading" class="py-6 space-y-4">
+                <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                <div>
+                    <h2 class="text-xl font-bold text-slate-100">Synchronizing local dataset</h2>
+                    <p class="text-sm text-slate-300 mt-2 font-mono bg-slate-900/80 px-4 py-2 rounded-xl border border-slate-700 text-xs inline-block">
+                        {{ autoLoadStatus }}
+                    </p>
+                </div>
+            </div>
+
+            <div v-else class="space-y-6">
+                <div class="bg-rose-950/40 border border-rose-800/60 p-4 rounded-xl text-left space-y-2">
+                    <h3 class="text-sm font-bold text-rose-400 flex items-center gap-2">
+                        ⚠️ Automated stream interrupted
+                    </h3>
+                    <p class="text-xs text-slate-300 leading-relaxed">
+                        The app tried to read <code class="bg-slate-900 px-1 py-0.5 rounded text-amber-400 font-mono">merged_no_transcriptions.json</code> and <code class="bg-slate-900 px-1 py-0.5 rounded text-amber-400 font-mono">merged_sentences.csv</code> automatically but failed. This happens if you opened the file directly instead of using a web server.
+                    </p>
+                    <p class="text-[11px] text-slate-400 italic">
+                        Tip: Run <code class="bg-slate-900 px-1 py-0.5 rounded text-indigo-300 font-mono font-normal">python -m http.server 8000</code> in your folder and open localhost.
+                    </p>
+                </div>
+
+                <div class="text-xs text-slate-400 font-semibold uppercase tracking-wider text-center border-b border-slate-700 pb-2">
+                    Or Bypass & Upload Manually
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 text-left">
+                    <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">1. Metadata Structure Matrix (.json)</label>
+                        <input type="file" accept=".json" @change="handleJsonUpload" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
+                    </div>
+                    <div class="bg-slate-900 p-4 rounded-xl border border-slate-700">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">2. Transcriptions Table (.csv)</label>
+                        <input type="file" accept=".csv" @change="handleCsvUpload" class="block w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <main v-else class="flex-1 overflow-hidden flex flex-col">
+        
+        <div v-if="currentView === 'explorer'" class="flex-1 overflow-y-auto p-8 space-y-6">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-slate-800/40 p-5 rounded-2xl border border-slate-700/60 shadow-lg">
+                <div class="flex-1">
+                    <h2 class="text-2xl font-bold text-white tracking-tight">Conference transcriptions explorer</h2>
+                    <p class="text-sm text-slate-400 mt-0.5">Summary</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="w-64">
+                        <input v-model="searchQuery" type="text" placeholder="Filter by text attributes..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-indigo-500 placeholder-slate-500 transition">
+                    </div>
+                    <div>
+                        <select v-model="sortByDate" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 transition cursor-pointer font-medium">
+                            <option value="desc">📅 Newest First</option>
+                            <option value="asc">📅 Oldest First</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select v-model="filterMediaType" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 transition cursor-pointer">
+                            <option value="all">📁 All media types</option>
+                            <option value="audio">🎵 Audio tracks</option>
+                            <option value="video">🎥 Video recordings</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select v-model="filterNoticeType" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 transition cursor-pointer">
+                            <option value="all">🏷️ All notice types</option>
+                            <option v-for="nt in noticeTypesList" :key="nt" :value="nt">{{ nt }}</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div v-for="conf in filteredConferences" :key="conf.id" class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg hover:border-slate-500 transition flex flex-col justify-between">
+                    <div class="p-6 space-y-4">
+                        <div class="flex justify-between items-center">
+                            <div class="flex space-x-1.5">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-900/50 text-indigo-300 border border-indigo-700/50 uppercase tracking-wider">
+                                    {{ conf.type || 'Media' }}
+                                </span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-medium bg-slate-700 text-slate-300 border border-slate-600">
+                                    {{ conf.notice_type }}
+                                </span>
+                            </div>
+                            <span class="text-xs font-mono text-slate-500">ID: #{{ conf.id }}</span>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-white line-clamp-1" :title="conf.title">{{ conf.title }}</h3>
+                            <p class="text-xs text-slate-400 mt-1 line-clamp-1 italic font-medium">{{ conf.subtitle }}</p>
+                        </div>
+                        <p class="text-xs text-slate-400 line-clamp-2 bg-slate-900/40 p-2 rounded-lg border border-slate-700/30">
+                            {{ conf.description || 'No abstract description compiled for this target registry file.' }}
+                        </p>
+                        <div class="grid grid-cols-2 gap-2 text-xs pt-2 text-slate-300">
+                            <div>⏱️ {{ formatDuration(conf.duration) }}</div>
+                            <div>📅 {{ formatDate(conf.date) }}</div>
+                        </div>
+                    </div>
+                    <div class="px-6 py-4 bg-slate-800/60 border-t border-slate-700/50 flex justify-between items-center">
+                        <span class="text-xs text-slate-400 font-medium truncate max-w-[150px]">By: {{ conf.creator || 'Unknown' }}</span>
+                        <button @click="selectConference(conf)" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs px-4 py-2 rounded-lg transition shadow-md">
+                            Open conference
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div v-if="filteredConferences.length === 0" class="text-center py-24 text-slate-500 italic text-sm">
+                No active tracking records match your criteria configurations.
+            </div>
+        </div>
+
+        <div v-if="currentView === 'workspace'" class="flex-1 flex overflow-hidden">
+            
+            <div class="w-80 border-r border-slate-700 flex flex-col bg-slate-800 shrink-0">
+                <div class="p-4 border-b border-slate-700 bg-slate-900/40">
+                    <button @click="goToExplorer" class="text-xs text-indigo-400 font-semibold hover:text-indigo-300 transition flex items-center space-x-1">
+                        <span>← Return to conference explorer</span>
+                    </button>
+                </div>
+
+                <div class="flex-1 overflow-y-auto p-5 space-y-5">
+                    <div>
+                        <h3 class="text-md font-bold text-white tracking-tight">{{ activeConference?.title }}</h3>
+                        <p class="text-xs text-slate-400 italic mt-0.5">{{ activeConference?.subtitle }}</p>
+                    </div>
+
+                    <div class="space-y-2 bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
+                        <div class="flex justify-between items-center">
+                            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Audio control stream</label>
+                            <span v-if="isPlayingParent" class="text-[9px] font-bold uppercase bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-800/40">Timeline: Global</span>
+                            <span v-else class="text-[9px] font-bold uppercase bg-amber-950 text-amber-400 px-1.5 py-0.5 rounded border border-amber-800/40">Timeline: Subpart Bound</span>
+                        </div>
+                        <audio ref="audioPlayer" controls class="w-full mt-1 accent-indigo-600" @timeupdate="onTimeUpdate" :src="activeConference?.file || activeConference?.stream"></audio>
+                        <div v-if="!isPlayingParent" class="text-[10px] text-amber-400/80 bg-amber-950/20 p-1.5 rounded border border-amber-800/20 mt-1">
+                            🔒 Window Lock: <span class="font-mono font-semibold">{{ formatTime(activePart?.tcin) }}</span> ➔ <span class="font-mono font-semibold">{{ formatTime(activePart?.tcout) }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="activeConference" class="bg-slate-900/60 p-4 rounded-xl border border-slate-700/70 space-y-3 text-xs">
+                        <h4 class="text-[11px] font-bold uppercase tracking-wider text-indigo-400 border-b border-slate-700/60 pb-1.5">Metadata</h4>
+                        
+                        <div class="grid grid-cols-2 gap-2 text-[11px]">
+                            <div class="flex flex-col">
+                                <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Temporal stamp</span>
+                                <span class="text-slate-300 font-medium mt-0.5">{{ formatDate(activeConference.date) }}</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Notice type</span>
+                                <span class="text-slate-300 font-mono mt-0.5 text-indigo-300">{{ activeConference.notice_type || 'N/A' }}</span>
+                            </div>
+                        </div>
+
+                        <div v-if="activeConference.creator" class="flex flex-col">
+                            <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Creator/author</span>
+                            <span class="text-slate-300 mt-0.5 leading-normal">{{ activeConference.creator }}</span>
+                        </div>
+
+                        <div v-if="activeConference.speakers && activeConference.speakers.length > 0" class="flex flex-col">
+                            <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Speakers (metadata)</span>
+                            <div class="flex flex-col space-y-1 mt-1">
+                                <div v-for="sp in activeConference.speakers" :key="sp.id" class="bg-slate-800/80 px-2 py-1 rounded text-[11px] text-slate-300 border border-slate-700/60 leading-tight">
+                                    🗣️ {{ sp.value }}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="activeConference.contributors && activeConference.contributors.length > 0" class="flex flex-col">
+                            <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Contributors</span>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <span v-for="ct in activeConference.contributors" :key="ct.value" class="bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded text-[10px] font-medium border border-indigo-900/40">
+                                    🤝 {{ ct.value}}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div v-if="activeConference.people && activeConference.people.length > 0" class="flex flex-col">
+                            <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">People</span>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <span v-for="pe in activeConference.people" :key="pe.syracuse_id" class="bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded text-[10px] font-medium border border-indigo-900/40">
+                                    {{ pe.first_name }} {{ pe.last_name }} {{pe.syracuse_id ? `(ID: ${pe.syracuse_id})` : 'No ID'}}
+                                </span>
+                            </div>
+                        </div>
+                        
+
+                        <div v-if="activeConference.keywords && activeConference.keywords.length > 0" class="flex flex-col">
+                            <span class="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Taxonomy keywords</span>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <span v-for="kw in activeConference.keywords" :key="kw.id" class="bg-indigo-950/80 text-indigo-300 px-2 py-0.5 rounded text-[10px] font-medium border border-indigo-900/40">
+                                    # {{ kw.value }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">Subparts</label>
+                            <span class="text-[11px] bg-slate-700 px-1.5 py-0.5 rounded text-slate-300 font-mono">{{ activeConference?.children?.length || 0 }}</span>
+                        </div>
+
+                        <div @click="activatePart(activeConference, true)" :class="['p-3 rounded-lg border text-xs cursor-pointer transition flex items-center justify-between', isPlayingParent ? 'bg-indigo-950/40 border-indigo-500 text-white font-medium' : 'bg-slate-900/50 border-slate-700 text-slate-300 hover:bg-slate-900']">
+                            <div class="truncate pr-2"><span class="text-indigo-400 mr-1 font-bold">●</span> Full conference</div>
+                            <span class="text-[10px] text-slate-500 shrink-0 font-mono">{{ formatDuration(activeConference?.duration) }}</span>
+                        </div>
+
+                        <div v-if="activeConference?.children && activeConference.children.length > 0" class="space-y-1.5 pl-3 border-l-2 border-slate-700">
+                            <div v-for="(child, idx) in activeConference.children" :key="child.id" @click="activatePart(child, false)" :class="['p-2.5 rounded-lg border text-xs cursor-pointer transition flex flex-col space-y-1', (!isPlayingParent && activePart?.id === child.id) ? 'bg-indigo-950/40 border-indigo-500 text-white font-medium' : 'bg-slate-900/30 border-slate-700/60 text-slate-400 hover:bg-slate-900/60']">
+                                <div class="line-clamp-2"><span class="font-mono text-slate-500 font-semibold">Segment {{ idx + 1 }}:</span> {{ child.title }}</div>
+                                <div class="text-[10px] text-slate-500 flex justify-between pt-1 font-mono">
+                                    <span>TCIN: +{{ formatDuration(child.tcin) }}</span>
+                                    <span>Δ {{ formatDuration(child.duration) }}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="p-4 bg-slate-900/40 border-t border-slate-700 mt-auto">
+                    <button @click="exportToSRT" class="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold py-2 px-3 rounded-lg border border-slate-600 shadow transition">
+                        📥 Export Sync Subtitles (.SRT)
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col bg-slate-900">
+                <!-- Workspace Filters & Interactive Timeline Header Area -->
+                <div class="px-6 py-4 border-b border-slate-700 bg-slate-800/40 flex flex-col gap-4 shrink-0 shadow-sm">
+                    <!-- Filters and Metrics controls Row -->
+                    <div class="flex flex-wrap gap-4 items-center justify-between">
+                        <div class="flex items-center space-x-4 flex-wrap gap-2">
+                            <input v-model="subSearchQuery" type="text" placeholder="Search linear segments..." class="w-64 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500 transition">
+                            
+                            <select v-model="filterSpeaker" class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-indigo-500 transition cursor-pointer">
+                                <option value="all">🗣️ All Speakers</option>
+                                <option v-for="sp in activeSpeakersList" :key="sp" :value="sp">{{ sp }}</option>
+                            </select>
+
+                            <span class="text-xs text-slate-400">Segments In View: <strong>{{ computedSentences.length }}</strong></span>
+                        </div>
+
+                        <div class="flex items-center space-x-2 flex-wrap gap-1.5">
+                            <button @click="toggleFilter('all')" :class="['px-3 py-1.5 rounded-lg text-xs font-medium border transition', filterMode === 'all' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700']">All</button>
+                            <button @click="toggleFilter('hallu')" :class="['px-3 py-1.5 rounded-lg text-xs font-medium border transition', filterMode === 'hallu' ? 'bg-amber-950 text-amber-400 border-amber-600' : 'bg-slate-800 border-slate-700 text-amber-500/80 hover:bg-slate-700']">Hallucinations ({{ stats.hallus }})</button>
+                            <button @click="toggleFilter('repetition')" :class="['px-3 py-1.5 rounded-lg text-xs font-medium border transition', filterMode === 'repetition' ? 'bg-purple-950 text-purple-400 border-purple-600' : 'bg-slate-800 border-slate-700 text-purple-500/80 hover:bg-slate-700']">Repetitions ({{ stats.reps }})</button>
+                            <button @click="toggleFilter('empty_punc')" :class="['px-3 py-1.5 rounded-lg text-xs font-medium border transition', filterMode === 'empty_punc' ? 'bg-slate-700 text-slate-100 border-slate-500' : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700']">Empty or Punctuation ({{ stats.emptyPuncs }})</button>
+                            <button @click="toggleFilter('invalid')" :class="['px-3 py-1.5 rounded-lg text-xs font-medium border transition', filterMode === 'invalid' ? 'bg-rose-950 text-rose-400 border-rose-600' : 'bg-slate-800 border-slate-700 text-rose-500/80 hover:bg-slate-700']">Invalid ({{ stats.invalids }})</button>
+                        </div>
+                    </div>
+
+                    <!-- Macro Speaker Flow Timeline Div (New Feature Element) -->
+                    <div class="bg-slate-950/60 border border-slate-800 p-2.5 rounded-xl space-y-1.5 shadow-inner">
+                        <div class="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-500 px-0.5">
+                            <span class="flex items-center gap-1.5">⏱️ Speaker Flow Timeline <span class="text-slate-400 font-normal lowercase font-sans">(Click a segment to skip player)</span></span>
+                            <span class="text-indigo-400 font-mono font-bold">{{ isPlayingParent ? 'Context: Global' : 'Context: Subpart' }}</span>
+                        </div>
+                        <div class="w-full h-4 bg-slate-900 rounded-lg flex overflow-hidden border border-slate-800 relative shadow-sm">
+                            <div v-for="(seg, sidx) in timelineSegments" 
+                                 :key="sidx"
+                                 :style="{ width: seg.widthPct }"
+                                 :class="[getSpeakerColorClass(seg.speaker), 'h-full transition-all duration-150 cursor-pointer hover:opacity-80 active:scale-y-95 border-r border-slate-950/30 last:border-r-0']"
+                                 :title="`${seg.speaker || 'UNKNOWN'} | Duration: ${formatDuration(seg.duration)} (${formatTime(seg.start)} - ${formatTime(seg.end)})`"
+                                 @click="clickTimeline(seg)">
+                            </div>
+                            <div v-if="timelineSegments.length === 0" class="w-full h-full flex items-center justify-center text-[10px] text-slate-600 italic">
+                                No segments registered to construct timeline flow mapping.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Live Subtitles Core Ingestion Feed -->
+                <div class="flex-1 overflow-y-auto p-6 space-y-3 scroll-smooth" ref="subtitleContainer">
+                    <div v-for="sentence in computedSentences" :key="sentence.global_segment_index" :id="'sent-' + sentence.global_segment_index" @click="seekTo(sentence.sentence_start)" :class="['p-4 rounded-xl border text-left transition cursor-pointer flex flex-col md:flex-row md:items-start space-y-3 md:space-y-0 md:space-x-4 relative group', activeSegmentIndex === sentence.global_segment_index ? 'bg-indigo-950/60 border-indigo-500 shadow-md ring-1 ring-indigo-500 text-white' : 'bg-slate-800/40 border-slate-800/80 hover:bg-slate-800 hover:border-slate-700']">
+                        <div class="w-24 shrink-0 font-mono text-xs font-medium text-slate-500 pt-0.5 flex flex-col">
+                            <span class="text-indigo-400 font-semibold group-hover:underline">{{ formatTime(sentence.sentence_start) }}</span>
+                            <span class="text-[10px] text-slate-600 mt-0.5">➔ {{ formatTime(sentence.sentence_end) }}</span>
+                        </div>
+                        <div class="w-28 shrink-0 flex items-center space-x-1.5 pt-0.5">
+                            <span :class="['w-2 h-2 rounded-full', getSpeakerColorClass(sentence.speaker)]"></span>
+                            <span class="text-xs font-semibold text-slate-300 font-mono truncate" :title="sentence.speaker">{{ sentence.speaker || 'SPEAKER_?' }}</span>
+                        </div>
+                        <div class="flex-1 text-sm text-slate-200 leading-relaxed pr-16">
+                            <span v-if="isPlayingParent" class="text-[10px] bg-slate-800 text-indigo-300 border border-slate-700 px-1.5 py-0.5 rounded font-mono mr-1.5">Rec ID: #{{sentence.recording_id}}</span>
+                            {{ sentence.sentence }}
+                        </div>
+                        <div class="absolute right-4 top-4 flex flex-wrap items-center gap-1">
+                            <span v-if="sentence.is_empty_or_punctuation_only === 'True' || sentence.is_empty_or_punctuation_only === true" class="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-700 text-slate-300 border border-slate-600">Punc/Empty</span>
+                            <span v-if="sentence.is_hallu === 'True' || sentence.is_hallu === true" class="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-950 text-amber-400 border border-amber-800/60">Hallu</span>
+                            <span v-if="sentence.is_repetition === 'True' || sentence.is_repetition === true" class="px-2 py-0.5 rounded text-[9px] font-bold bg-purple-950 text-purple-400 border border-purple-800/60">Rep</span>
+                            <span v-if="sentence.valide === 'False' || sentence.valide === false" class="px-2 py-0.5 rounded text-[9px] font-bold bg-rose-950 text-rose-400 border border-rose-800/60">Invalid</span>
+                        </div>
+                    </div>
+                    <div v-if="computedSentences.length === 0" class="text-center py-24 text-slate-500 italic text-sm">
+                        No structural segments mapped to this filter matrix combination.
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+</div>
+
+<script>
+const { createApp, ref, shallowRef, computed, watch, onMounted } = Vue;
+
+createApp({
+    setup() {
+        const currentView = ref('explorer');
+        const searchQuery = ref('');
+        const subSearchQuery = ref('');
+        const filterMode = ref('all');
+        const filterSpeaker = ref('all');
+        const currentTime = ref(0);
+
+        const filterMediaType = ref('all');
+        const filterNoticeType = ref('all');
+        const sortByDate = ref('desc');
+
+        const rawMetadata = shallowRef(null);
+        const indexedSubtitles = shallowRef({});
+        
+        const isAutoLoading = ref(true);
+        const autoLoadStatus = ref('Initializing pipeline threads...');
+        const dataLoaded = ref(false);
+
+        const activeConference = ref(null);
+        const activePart = ref(null);
+        const isPlayingParent = ref(true);
+
+        const audioPlayer = ref(null);
+        const subtitleContainer = ref(null);
+
+        let temporalClickLock = false; // Flag to isolate manual timeline jumps from passive playback updates
+
+        const autoLoadData = async () => {
+            try {
+                autoLoadStatus.value = 'Loading structural database index...';
+                const jsonResponse = await fetch('merged_no_transcriptions.json');
+                if (!jsonResponse.ok) throw new Error('JSON fetch failed');
+                const jsonData = await jsonResponse.json();
+                rawMetadata.value = jsonData.data || jsonData;
+
+                autoLoadStatus.value = 'Connecting to transcription stream...';
+                const csvResponse = await fetch('merged_sentences.csv');
+                if (!csvResponse.ok) throw new Error('CSV fetch failed');
+
+                const reader = csvResponse.body.getReader();
+                const contentLength = +csvResponse.headers.get('Content-Length') || 77583643;
+                
+                let receivedLength = 0;
+                const chunks = [];
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    chunks.push(value);
+                    receivedLength += value.length;
+                    
+                    const pct = Math.min(100, Math.round((receivedLength / contentLength) * 100));
+                    autoLoadStatus.value = `Downloading alignment table: ${(receivedLength / (1024 * 1024)).toFixed(1)} MB / ${(contentLength / (1024 * 1024)).toFixed(1)} MB (${pct}%)`;
+                }
+
+                autoLoadStatus.value = 'Assembling transcription memory blob...';
+                const csvBlob = new Blob(chunks, { type: 'text/csv' });
+
+                autoLoadStatus.value = 'Initializing zero-copy lexical ingestion...';
+                const localMapped = {};
+                let totalProcessedRows = 0;
+
+                Papa.parse(csvBlob, {
+                    header: true,
+                    skipEmptyLines: true,
+                    chunk: (results) => {
+                        const rows = results.data;
+                        const len = rows.length;
+                        for (let i = 0; i < len; i++) {
+                            const row = rows[i];
+                            const recId = String(row.recording_id).trim();
+                            if (!localMapped[recId]) localMapped[recId] = [];
+                            localMapped[recId].push(row);
+                        }
+                        totalProcessedRows += len;
+                        autoLoadStatus.value = `Ingesting corpus: ${totalProcessedRows.toLocaleString()} segments indexed...`;
+                    },
+                    complete: () => {
+                        indexedSubtitles.value = localMapped;
+                        isAutoLoading.value = false;
+                        dataLoaded.value = true;
+                    },
+                    error: (err) => {
+                        console.error("PapaParse chunk error:", err);
+                        isAutoLoading.value = false;
+                    }
+                });
+
+            } catch (err) {
+                console.warn("Automated asset pipeline fallback triggered (Server offline or CORS blocked):", err);
+                isAutoLoading.value = false;
+            }
+        };
+
+        const handleJsonUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                rawMetadata.value = JSON.parse(e.target.result).data || JSON.parse(e.target.result);
+                checkDataCompleteness();
+            };
+            reader.readAsText(file);
+        };
+
+        const handleCsvUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const localMapped = {};
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true,
+                chunk: (results) => {
+                    const rows = results.data;
+                    const len = rows.length;
+                    for (let i = 0; i < len; i++) {
+                        const row = rows[i];
+                        const recId = String(row.recording_id).trim();
+                        if (!localMapped[recId]) localMapped[recId] = [];
+                        localMapped[recId].push(row);
+                    }
+                },
+                complete: () => {
+                    indexedSubtitles.value = localMapped;
+                    checkDataCompleteness();
+                }
+            });
+        };
+
+        const checkDataCompleteness = () => {
+            if (rawMetadata.value && Object.keys(indexedSubtitles.value).length > 0) {
+                dataLoaded.value = true;
+            }
+        };
+
+        onMounted(() => {
+            autoLoadData();
+        });
+
+        const rootConferences = computed(() => {
+            if (!rawMetadata.value) return [];
+            return rawMetadata.value.filter(item => !item.parent);
+        });
+
+        const noticeTypesList = computed(() => {
+            if (!rawMetadata.value) return [];
+            const typesSet = new Set();
+            rootConferences.value.forEach(c => { if (c.notice_type) typesSet.add(c.notice_type); });
+            return Array.from(typesSet).sort();
+        });
+
+        const filteredConferences = computed(() => {
+            let list = rootConferences.value;
+            if (searchQuery.value) {
+                const q = searchQuery.value.toLowerCase();
+                list = list.filter(c => c.title?.toLowerCase().includes(q) || c.subtitle?.toLowerCase().includes(q));
+            }
+            if (filterMediaType.value !== 'all') list = list.filter(c => c.type === filterMediaType.value);
+            if (filterNoticeType.value !== 'all') list = list.filter(c => c.notice_type === filterNoticeType.value);
+            
+            return [...list].sort((a, b) => {
+                const dateA = a.date ? new Date(a.date).getTime() : 0;
+                const dateB = b.date ? new Date(b.date).getTime() : 0;
+                return sortByDate.value === 'desc' ? dateB - dateA : dateA - dateB;
+            });
+        });
+
+        const activeSubtitlesList = computed(() => {
+            if (!activeConference.value) return [];
+            
+            if (isPlayingParent.value) {
+                if (activeConference.value.children && activeConference.value.children.length > 0) {
+                    let combined = [];
+                    activeConference.value.children.forEach(child => {
+                        const childSubs = indexedSubtitles.value[String(child.id)] || [];
+                        const offset = parseFloat(child.tcin || 0);
+                        const len = childSubs.length;
+                        
+                        for (let i = 0; i < len; i++) {
+                            const originalRow = childSubs[i];
+                            combined.push({
+                                ...originalRow,
+                                sentence_start: parseFloat(originalRow.sentence_start) + offset,
+                                sentence_end: parseFloat(originalRow.sentence_end) + offset,
+                                global_segment_index: `ch-${child.id}-${originalRow.segment_index}`
+                            });
+                        }
+                    });
+                    return combined.sort((a, b) => a.sentence_start - b.sentence_start);
+                } else {
+                    const subs = indexedSubtitles.value[String(activeConference.value.id)] || [];
+                    return subs.map(s => ({
+                        ...s,
+                        sentence_start: parseFloat(s.sentence_start),
+                        sentence_end: parseFloat(s.sentence_end),
+                        global_segment_index: `root-${s.segment_index}`
+                    }));
+                }
+            } else {
+                const subs = indexedSubtitles.value[String(activePart.value.id)] || [];
+                const offset = parseFloat(activePart.value.tcin || 0);
+                return subs.map(s => ({
+                    ...s,
+                    sentence_start: parseFloat(s.sentence_start) + offset,
+                    sentence_end: parseFloat(s.sentence_end) + offset,
+                    global_segment_index: `part-${s.segment_index}`
+                }));
+            }
+        });
+
+        const timelineSegments = computed(() => {
+            const list = activeSubtitlesList.value;
+            if (!list || list.length === 0) return [];
+
+            const totalStart = list[0].sentence_start;
+            const totalEnd = list[list.length - 1].sentence_end;
+            const contextTotalDuration = totalEnd - totalStart || 1;
+
+            const segments = [];
+            let currentBlock = null;
+
+            list.forEach(s => {
+                const sStart = s.sentence_start;
+                const sEnd = s.sentence_end;
+                const speakerNorm = s.speaker ? s.speaker.trim() : 'SPEAKER_?';
+
+                if (!currentBlock || currentBlock.speaker !== speakerNorm) {
+                    if (currentBlock) segments.push(currentBlock);
+                    currentBlock = {
+                        speaker: speakerNorm,
+                        start: sStart,
+                        end: sEnd,
+                        duration: sEnd - sStart
+                    };
+                } else {
+                    currentBlock.end = sEnd;
+                    currentBlock.duration += (sEnd - sStart);
+                }
+            });
+            if (currentBlock) segments.push(currentBlock);
+
+            return segments.map(b => {
+                const computedPct = (b.duration / contextTotalDuration) * 100;
+                return {
+                    ...b,
+                    widthPct: `${Math.max(0.4, computedPct)}%`
+                };
+            });
+        });
+
+        const activeSpeakersList = computed(() => {
+            const list = activeSubtitlesList.value;
+            const speakers = new Set();
+            const len = list.length;
+            for (let i = 0; i < len; i++) {
+                if (list[i].speaker) speakers.add(list[i].speaker.trim());
+            }
+            return Array.from(speakers).sort();
+        });
+
+        const activeSegmentIndex = computed(() => {
+            const time = currentTime.value;
+            const list = activeSubtitlesList.value;
+            const len = list.length;
+            for(let i = 0; i < len; i++) {
+                if (time >= list[i].sentence_start && time <= list[i].sentence_end) return list[i].global_segment_index;
+            }
+            return null;
+        });
+
+        const stats = computed(() => {
+            const subs = activeSubtitlesList.value;
+            let hallus = 0, reps = 0, invalids = 0, emptyPuncs = 0;
+            const len = subs.length;
+            for(let i = 0; i < len; i++) {
+                if (subs[i].is_hallu === 'True' || subs[i].is_hallu === true) hallus++;
+                if (subs[i].is_repetition === 'True' || subs[i].is_repetition === true) reps++;
+                if (subs[i].valide === 'False' || subs[i].valide === false) invalids++;
+                if (subs[i].is_empty_or_punctuation_only === 'True' || subs[i].is_empty_or_punctuation_only === true) emptyPuncs++;
+            }
+            return { hallus, reps, invalids, emptyPuncs };
+        });
+
+        const computedSentences = computed(() => {
+            let list = activeSubtitlesList.value;
+            if (subSearchQuery.value) {
+                const sq = subSearchQuery.value.toLowerCase();
+                list = list.filter(s => s.sentence?.toLowerCase().includes(sq));
+            }
+            if (filterSpeaker.value !== 'all') {
+                list = list.filter(s => s.speaker?.trim() === filterSpeaker.value);
+            }
+            const mode = filterMode.value;
+            if (mode === 'hallu') return list.filter(s => s.is_hallu === 'True' || s.is_hallu === true);
+            if (mode === 'repetition') return list.filter(s => s.is_repetition === 'True' || s.is_repetition === true);
+            if (mode === 'invalid') return list.filter(s => s.valide === 'False' || s.valide === false);
+            if (mode === 'empty_punc') return list.filter(s => s.is_empty_or_punctuation_only === 'True' || s.is_empty_or_punctuation_only === true);
+            return list;
+        });
+
+        const selectConference = (conf) => {
+            activeConference.value = conf;
+            activePart.value = null;
+            isPlayingParent.value = true;
+            currentView.value = 'workspace';
+            currentTime.value = 0;
+            filterMode.value = 'all';
+            filterSpeaker.value = 'all';
+            subSearchQuery.value = '';
+            
+            // Fix viewport loading layout displacement issue by snapping the main browser window scroll to the absolute top
+            window.scrollTo(0, 0);
+
+            setTimeout(() => { 
+                if (audioPlayer.value) audioPlayer.value.currentTime = 0; 
+                if (subtitleContainer.value) subtitleContainer.value.scrollTop = 0;
+            }, 50);
+        };
+
+        const activatePart = (item, isParent) => {
+            isPlayingParent.value = isParent;
+            if (!isParent) activePart.value = item;
+            filterMode.value = 'all';
+            filterSpeaker.value = 'all';
+            subSearchQuery.value = '';
+            setTimeout(() => {
+                if (audioPlayer.value) audioPlayer.value.currentTime = isParent ? 0 : parseFloat(item.tcin || 0);
+                if (subtitleContainer.value) subtitleContainer.value.scrollTop = 0;
+            }, 20);
+        };
+
+        const goToExplorer = () => { 
+            currentView.value = 'explorer'; 
+            window.scrollTo(0, 0);
+        };
+        
+        const toggleFilter = (mode) => { filterMode.value = mode; };
+
+        const onTimeUpdate = (e) => {
+            const time = e.target.currentTime;
+            currentTime.value = time;
+            if (!isPlayingParent.value && activePart.value) {
+                const tcout = parseFloat(activePart.value.tcout);
+                if (tcout && time >= tcout) {
+                    audioPlayer.value.pause();
+                    audioPlayer.value.currentTime = parseFloat(activePart.value.tcin || 0);
+                }
+            }
+        };
+
+        const seekTo = (seconds) => {
+            const timeNum = parseFloat(seconds);
+            if (!isNaN(timeNum) && audioPlayer.value) {
+                audioPlayer.value.currentTime = timeNum;
+                audioPlayer.value.play();
+            }
+        };
+
+        // Explicit interactive timeline block click handler
+        const clickTimeline = (seg) => {
+            temporalClickLock = true;
+            seekTo(seg.start);
+            
+            // Look up the exact first sentence element boundary associated with this block trigger point
+            const targetSent = activeSubtitlesList.value.find(s => Math.abs(s.sentence_start - seg.start) < 0.01) || 
+                               activeSubtitlesList.value.find(s => s.sentence_start >= seg.start);
+                               
+            if (targetSent) {
+                setTimeout(() => {
+                    const el = document.getElementById(`sent-${targetSent.global_segment_index}`);
+                    if (el && subtitleContainer.value) {
+                        // Align perfectly at the very top of the subtitle container div
+                        subtitleContainer.value.scrollTop = el.offsetTop - subtitleContainer.value.offsetTop;
+                    }
+                    setTimeout(() => { temporalClickLock = false; }, 300);
+                }, 50);
+            } else {
+                temporalClickLock = false;
+            }
+        };
+
+        watch(activeSegmentIndex, (newIdx) => {
+            if (temporalClickLock) return; // Prevent natural timeline play updates from overriding custom top alignment click triggers
+            if (newIdx !== null && subtitleContainer.value) {
+                const el = document.getElementById(`sent-${newIdx}`);
+                if (el) {
+                    const container = subtitleContainer.value;
+                    const eTop = el.offsetTop - container.offsetTop;
+                    if (eTop < container.scrollTop || eTop + el.clientHeight > container.scrollTop + container.clientHeight) {
+                        container.scrollTop = eTop - 40;
+                    }
+                }
+            }
+        });
+
+        const formatDuration = (secs) => {
+            if (!secs) return '00:00';
+            const s = parseFloat(secs);
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = Math.floor(s % 60);
+            return h > 0 ? `${h}h ${m}m ${sec}s` : `${m}:${sec.toString().padStart(2, '0')}`;
+        };
+
+        const formatDate = (isoString) => {
+            if (!isoString) return 'Undated';
+            const d = new Date(isoString);
+            return isNaN(d.getTime()) ? isoString : d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+        };
+
+        const formatTime = (secs) => {
+            const s = parseFloat(secs);
+            if (isNaN(s)) return '00:00';
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            const ms = Math.floor((s % 1) * 1000);
+            return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+        };
+
+        const getSpeakerColorClass = (speaker) => {
+            const hash = String(speaker).split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            const colors = ['bg-emerald-500', 'bg-sky-500', 'bg-amber-500', 'bg-pink-500', 'bg-purple-500'];
+            return colors[hash % colors.length];
+        };
+
+        const exportToSRT = () => {
+            const list = activeSubtitlesList.value;
+            if (list.length === 0) return alert('No subtitles to export.');
+            const toSrtTimestamp = (secs) => {
+                const s = parseFloat(secs);
+                const h = Math.floor(s / 3600).toString().padStart(2, '0');
+                const m = Math.floor((s % 3600) / 60).toString().padStart(2, '0');
+                const sec = Math.floor(s % 60).toString().padStart(2, '0');
+                const ms = Math.floor((s % 1) * 1000).toString().padStart(3, '0');
+                return `${h}:${m}:${sec},${ms}`;
+            };
+            let output = '';
+            for(let i = 0; i < list.length; i++) {
+                output += `${i + 1}\n${toSrtTimestamp(list[i].sentence_start)} --> ${toSrtTimestamp(list[i].sentence_end)}\n[${list[i].speaker || 'SPEAKER'}] ${list[i].sentence}\n\n`;
+            }
+            const blob = new Blob([output], { type: 'text/srt;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            const fileName = isPlayingParent.value ? `conference_${activeConference.value?.id}_full.srt` : `subpart_${activePart.value?.id}_sync.srt`;
+            link.setAttribute("download", fileName);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        return {
+            currentView, searchQuery, subSearchQuery, filterMode, filterSpeaker, currentTime,
+            filterMediaType, filterNoticeType, noticeTypesList, sortByDate,
+            dataLoaded, isAutoLoading, autoLoadStatus, rootConferences, filteredConferences, activeConference,
+            activePart, isPlayingParent, computedSentences, stats, activeSegmentIndex, activeSpeakersList, timelineSegments,
+            handleJsonUpload, handleCsvUpload, selectConference, activatePart, clickTimeline,
+            goToExplorer, toggleFilter, onTimeUpdate, seekTo,
+            formatDuration, formatDate, formatTime, getSpeakerColorClass, exportToSRT,
+            audioPlayer, subtitleContainer
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
